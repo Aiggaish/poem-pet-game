@@ -625,7 +625,6 @@ function renderVoiceGate() {
   var card = document.getElementById('recite-card');
   var item = currentReciteItem;
   var isPoem = currentMode === 'poem';
-  var targetText = isPoem ? item.content : (item.voiceText || item.title);
 
   var html = '<button class="recite-back-btn" onclick="openRecite(currentReciteItem)">← 返回阅读</button>';
 
@@ -635,10 +634,16 @@ function renderVoiceGate() {
       '<h2 class="recite-title">' + item.title + '</h2>';
 
   if (isPoem) {
-    html += '<div class="recite-poem voice-target-text">' + item.content + '</div>';
-    html += '<p class="voice-hint">请大声朗读上面的古诗，系统会自动识别哦~</p>';
+    // 古诗：不显示原文，需要背诵。提供"偷看一眼"按钮
+    html += '<p class="recite-author">[' + item.dynasty + '] ' + item.author + '</p>';
+    html += '<p class="voice-hint">请大声背诵这首古诗吧！<br>系统会自动识别你的声音~</p>';
+    html += '<button class="peek-btn" onclick="peekPoem()">👀 偷看一眼</button>';
+    html += '<div id="peek-area"></div>';
   } else {
-    html += '<p class="voice-hint">请大声朗读故事标题"' + item.title + '"，以及故事中的任意一段~</p>';
+    // 故事：显示原文，可以看着朗读
+    html += '<p class="recite-author">📖 小故事</p>';
+    html += '<div class="story-content">' + item.content + '</div>';
+    html += '<p class="voice-hint">请大声朗读上面的故事吧！<br>系统会自动识别你的声音~</p>';
   }
 
   // 检查浏览器支持
@@ -652,6 +657,7 @@ function renderVoiceGate() {
   } else {
     html +=
       '<div class="voice-record-area" id="voice-record-area">' +
+        '<div class="voice-status" id="voice-status"></div>' +
         '<button class="voice-mic-btn" id="voice-mic-btn" onclick="toggleRecording()">' +
           '<span class="mic-icon">🎤</span>' +
           '<span class="mic-text">点击开始录音</span>' +
@@ -676,6 +682,16 @@ function renderVoiceGate() {
   document.getElementById('content-area').scrollTop = 0;
 }
 
+// 偷看古诗原文（3秒后自动隐藏）
+function peekPoem() {
+  var area = document.getElementById('peek-area');
+  if (area.innerHTML) return; // 已经在显示了
+  area.innerHTML = '<div class="peek-text">' + currentReciteItem.content + '</div>';
+  setTimeout(function() {
+    area.innerHTML = '';
+  }, 3000);
+}
+
 function toggleRecording() {
   if (isRecording) {
     stopRecording();
@@ -688,23 +704,44 @@ function startRecording() {
   var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) return;
 
+  // 清除之前的结果
+  voiceResult = '';
+  var resultEl = document.getElementById('voice-result');
+  var scoreEl = document.getElementById('voice-score');
+  var passBtn = document.getElementById('voice-pass-btn');
+  if (resultEl) resultEl.style.display = 'none';
+  if (scoreEl) scoreEl.style.display = 'none';
+  if (passBtn) passBtn.remove();
+
   recognition = new SR();
   recognition.lang = 'zh-CN';
   recognition.continuous = true;
   recognition.interimResults = true;
+  recognition.maxAlternatives = 1;
 
-  voiceResult = '';
   isRecording = true;
 
   var micBtn = document.getElementById('voice-mic-btn');
-  micBtn.classList.add('recording');
-  micBtn.querySelector('.mic-icon').textContent = '🔴';
-  micBtn.querySelector('.mic-text').textContent = '录音中...点击停止';
+  var statusEl = document.getElementById('voice-status');
+  if (micBtn) {
+    micBtn.classList.add('recording');
+    micBtn.querySelector('.mic-icon').textContent = '🔴';
+    micBtn.querySelector('.mic-text').textContent = '录音中...点击停止';
+  }
+  if (statusEl) {
+    statusEl.textContent = '🎤 正在 listening... 请大声朗读';
+  }
+
+  recognition.onstart = function() {
+    if (statusEl) {
+      statusEl.textContent = '🎤 正在听... 请大声朗读';
+    }
+  };
 
   recognition.onresult = function(event) {
     var final = '';
     var interim = '';
-    for (var i = event.resultIndex; i < event.results.length; i++) {
+    for (var i = 0; i < event.results.length; i++) {
       if (event.results[i].isFinal) {
         final += event.results[i][0].transcript;
       } else {
@@ -713,26 +750,64 @@ function startRecording() {
     }
     voiceResult = (final + interim).trim();
 
-    var resultEl = document.getElementById('voice-result');
     var resultText = document.getElementById('voice-result-text');
-    if (voiceResult) {
+    if (voiceResult && resultEl) {
       resultEl.style.display = 'block';
       resultText.textContent = voiceResult;
+    }
+    if (statusEl && voiceResult) {
+      statusEl.textContent = '✅ 识别中... 说完点击停止';
     }
   };
 
   recognition.onerror = function(event) {
     console.warn('语音识别错误:', event.error);
-    if (event.error === 'not-allowed') {
-      showToast('请允许使用麦克风哦~', 3000);
+    var msg = '';
+    switch (event.error) {
+      case 'not-allowed':
+      case 'service-not-allowed':
+        msg = '请允许使用麦克风哦~';
+        break;
+      case 'no-speech':
+        msg = '没有听到声音，请再试一次~';
+        break;
+      case 'network':
+        msg = '网络问题，语音识别需要联网~';
+        break;
+      case 'aborted':
+        msg = '';
+        break;
+      default:
+        msg = '识别出错(' + event.error + ')，请重试~';
     }
-    stopRecording();
+    if (msg) showToast(msg, 2500);
+    if (statusEl) statusEl.textContent = msg;
   };
 
   recognition.onend = function() {
+    // 不自动重启 — 识别结束后处理结果
     if (isRecording) {
-      // 自动继续录音（如果还在录音状态）
-      try { recognition.start(); } catch(e) {}
+      isRecording = false;
+      if (micBtn) {
+        micBtn.classList.remove('recording');
+        micBtn.querySelector('.mic-icon').textContent = '🎤';
+        micBtn.querySelector('.mic-text').textContent = '点击重新录音';
+      }
+      if (statusEl) {
+        statusEl.textContent = '';
+      }
+
+      // 如果有识别结果，自动分析匹配度
+      if (voiceResult) {
+        var item = currentReciteItem;
+        var isPoem = currentMode === 'poem';
+        var targetText = item.content;
+
+        var result = matchRecitation(targetText, voiceResult);
+        showVoiceScore(result.score, result.passed);
+      } else if (statusEl) {
+        statusEl.textContent = '没有识别到声音，请重试~';
+      }
     }
   };
 
@@ -740,6 +815,14 @@ function startRecording() {
     recognition.start();
   } catch(e) {
     console.warn('启动录音失败:', e);
+    showToast('录音启动失败，请重试~', 2000);
+    if (statusEl) statusEl.textContent = '录音启动失败，请重试~';
+    isRecording = false;
+    if (micBtn) {
+      micBtn.classList.remove('recording');
+      micBtn.querySelector('.mic-icon').textContent = '🎤';
+      micBtn.querySelector('.mic-text').textContent = '点击开始录音';
+    }
   }
 }
 
@@ -761,7 +844,7 @@ function stopRecording() {
   if (voiceResult) {
     var item = currentReciteItem;
     var isPoem = currentMode === 'poem';
-    var targetText = isPoem ? item.content : (item.voiceText || item.title);
+    var targetText = isPoem ? item.content : item.content;
 
     var result = matchRecitation(targetText, voiceResult);
     showVoiceScore(result.score, result.passed);
