@@ -1,26 +1,35 @@
 // ==========================================
-// 古诗小达人 · 宠物养成记 - 核心逻辑
+// 古诗小达人 · 宠物养成记 - 核心逻辑 v2
 // ==========================================
 
 // ---- 游戏状态 ----
-let gameState = {
+var gameState = {
   pet: {
     name: '小可爱',
+    type: null, // 'dog' | 'cat' | 'rabbit' | 'dragon' — null表示未选择
     level: 0,
     exp: 0,
     hunger: 100,
     happiness: 100,
     health: 100,
-    stage: 0,
     lastFeedTime: null,
-    lastDecayTime: null // 上次属性衰减的时间戳
+    lastDecayTime: null
   },
   inventory: {
     basic_food: 3,
+    milk: 2,
+    fish: 0,
+    carrot: 0,
+    apple: 0,
+    cookie: 0,
     canned_food: 0,
+    sushi: 0,
     bone: 0,
+    honey: 0,
+    ice_cream: 0,
+    pizza: 0,
     cake: 0,
-    milk: 2
+    feast: 0
   },
   checkin: {
     streak: 0,
@@ -28,9 +37,10 @@ let gameState = {
     lastCheckinDate: null,
     todayCount: 0,
     todayDate: null,
-    history: {}, // { "2026-08-15": 2 }
-    completedPoems: [], // poem ids
-    completedStories: [] // story ids
+    history: {},
+    completedPoems: [],
+    completedStories: [],
+    clearedGates: [] // 已通关的关卡id列表
   },
   stats: {
     totalCheckins: 0,
@@ -41,7 +51,7 @@ let gameState = {
 };
 
 // ---- 持久化 ----
-const STORAGE_KEY = 'pet_poem_game_v1';
+var STORAGE_KEY = 'pet_poem_game_v2';
 
 function saveGame() {
   try {
@@ -53,16 +63,41 @@ function saveGame() {
 
 function loadGame() {
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
+    // 尝试新key
+    var saved = localStorage.getItem(STORAGE_KEY);
+    // 兼容旧key
+    if (!saved) {
+      saved = localStorage.getItem('pet_poem_game_v1');
+    }
     if (saved) {
-      const loaded = JSON.parse(saved);
-      gameState = Object.assign(gameState, loaded);
-      // 确保新字段存在
+      var loaded = JSON.parse(saved);
+      // 合并状态，确保新字段存在
+      gameState.pet = Object.assign(gameState.pet, loaded.pet || {});
+      gameState.inventory = Object.assign(gameState.inventory, loaded.inventory || {});
+      gameState.checkin = Object.assign(gameState.checkin, loaded.checkin || {});
+      gameState.stats = Object.assign(gameState.stats, loaded.stats || {});
+
+      // 确保数组存在
       gameState.checkin.completedPoems = gameState.checkin.completedPoems || [];
       gameState.checkin.completedStories = gameState.checkin.completedStories || [];
       gameState.checkin.history = gameState.checkin.history || {};
+      gameState.checkin.clearedGates = gameState.checkin.clearedGates || [];
       gameState.stats.unlockedAchievements = gameState.stats.unlockedAchievements || [];
       gameState.pet.lastDecayTime = gameState.pet.lastDecayTime || null;
+
+      // 如果没有选宠物类型，默认为dog（兼容旧存档）
+      if (!gameState.pet.type) {
+        gameState.pet.type = 'dog';
+      }
+
+      // 确保新食物字段存在
+      var newFoods = ['fish', 'carrot', 'apple', 'cookie', 'sushi', 'honey', 'ice_cream', 'pizza', 'feast'];
+      newFoods.forEach(function(f) {
+        if (gameState.inventory[f] === undefined) {
+          gameState.inventory[f] = 0;
+        }
+      });
+
       return true;
     }
   } catch (e) {
@@ -73,72 +108,52 @@ function loadGame() {
 
 // ---- 日期工具 ----
 function getTodayStr() {
-  const d = new Date();
+  var d = new Date();
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 
 function getYesterdayStr() {
-  const d = new Date();
+  var d = new Date();
   d.setDate(d.getDate() - 1);
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 
 function checkNewDay() {
-  const today = getTodayStr();
+  var today = getTodayStr();
   if (gameState.checkin.todayDate !== today) {
-    // 新的一天，重置今日打卡数
     gameState.checkin.todayDate = today;
     gameState.checkin.todayCount = 0;
-    // 检查是否断了连续打卡
     if (gameState.checkin.lastCheckinDate && gameState.checkin.lastCheckinDate !== getYesterdayStr() && gameState.checkin.lastCheckinDate !== today) {
       gameState.checkin.streak = 0;
     }
     saveGame();
   }
-  // 时间衰减（每次打开APP和渲染时都检查）
   checkTimeDecay();
 }
 
 // ---- 基于时间的属性衰减 ----
-// 饥饿度：每2小时衰减8点
-// 心情：每4小时衰减5点
-// 健康：饥饿低于30时每4小时衰减5点
 function checkTimeDecay() {
   var now = Date.now();
   var lastDecay = gameState.pet.lastDecayTime;
-
   if (!lastDecay) {
-    // 首次记录，不衰减
     gameState.pet.lastDecayTime = now;
     saveGame();
     return;
   }
-
-  var elapsed = now - lastDecay; // 毫秒
+  var elapsed = now - lastDecay;
   var TWO_HOURS = 2 * 60 * 60 * 1000;
   var FOUR_HOURS = 4 * 60 * 60 * 1000;
-
-  // 计算饥饿度衰减（每2小时-8）
   var hungerIntervals = Math.floor(elapsed / TWO_HOURS);
   if (hungerIntervals > 0) {
-    var hungerLoss = hungerIntervals * 8;
-    gameState.pet.hunger = Math.max(0, gameState.pet.hunger - hungerLoss);
+    gameState.pet.hunger = Math.max(0, gameState.pet.hunger - hungerIntervals * 8);
   }
-
-  // 计算心情衰减（每4小时-5）
   var happyIntervals = Math.floor(elapsed / FOUR_HOURS);
   if (happyIntervals > 0) {
-    var happyLoss = happyIntervals * 5;
-    gameState.pet.happiness = Math.max(0, gameState.pet.happiness - happyLoss);
+    gameState.pet.happiness = Math.max(0, gameState.pet.happiness - happyIntervals * 5);
   }
-
-  // 健康衰减（饥饿低于30时，每4小时-5）
   if (gameState.pet.hunger < 30 && happyIntervals > 0) {
-    var healthLoss = happyIntervals * 5;
-    gameState.pet.health = Math.max(0, gameState.pet.health - healthLoss);
+    gameState.pet.health = Math.max(0, gameState.pet.health - happyIntervals * 5);
   }
-
-  // 更新衰减时间戳（保留不足一个周期的剩余时间）
   if (hungerIntervals > 0 || happyIntervals > 0) {
     var consumedMs = Math.max(hungerIntervals * TWO_HOURS, happyIntervals * FOUR_HOURS);
     gameState.pet.lastDecayTime = lastDecay + consumedMs;
@@ -146,9 +161,9 @@ function checkTimeDecay() {
   }
 }
 
-// ---- 获取当前阶段 ----
+// ---- 获取当前宠物阶段 ----
 function getCurrentStage() {
-  return PET_STAGES[getPetStage(gameState.pet.level)];
+  return getPetStageInfo(gameState.pet.type, gameState.pet.level);
 }
 
 // ---- 获取升级所需经验 ----
@@ -156,33 +171,24 @@ function getExpNeeded() {
   return getExpForLevel(gameState.pet.level + 1);
 }
 
-// ---- 获取当前进化阶段进度 (0-100) ----
-// 展示从当前阶段到下一阶段的总进度，升级不会倒退
+// ---- 获取进化阶段进度 ----
 function getStageProgress() {
   var level = gameState.pet.level;
-  var currentStage = getPetStage(level);
-
-  // 最高阶段，进度满
-  if (currentStage >= PET_STAGES.length - 1) {
-    return 100;
-  }
-
-  var stageStartLevel = PET_STAGES[currentStage].minLevel;
-  var nextStageLevel = PET_STAGES[currentStage + 1].minLevel;
+  var pet = getPetType(gameState.pet.type);
+  var currentStage = getPetStageIndex(level, gameState.pet.type);
+  if (currentStage >= pet.stages.length - 1) return 100;
+  var stageStartLevel = pet.stages[currentStage].minLevel;
+  var nextStageLevel = pet.stages[currentStage + 1].minLevel;
   var levelRange = nextStageLevel - stageStartLevel;
-
-  // 当前等级内的经验进度 (0-1)
   var expNeeded = getExpNeeded();
   var expProgress = expNeeded > 0 ? (gameState.pet.exp / expNeeded) : 0;
-
-  // 总进度 = 已完成等级 + 当前等级内部分进度
   var totalProgress = (level - stageStartLevel + expProgress) / levelRange * 100;
   return Math.min(100, Math.max(0, Math.round(totalProgress)));
 }
 
-// ---- 显示Toast ----
+// ---- Toast ----
 function showToast(msg, duration) {
-  const toast = document.getElementById('toast');
+  var toast = document.getElementById('toast');
   toast.textContent = msg;
   toast.classList.add('active');
   clearTimeout(toast._timer);
@@ -192,18 +198,43 @@ function showToast(msg, duration) {
 }
 
 // ---- 弹窗控制 ----
-function openModal(id) {
-  document.getElementById(id).classList.add('active');
+function openModal(id) { document.getElementById(id).classList.add('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+// ==========================================
+// 宠物选择
+// ==========================================
+function renderPetSelection() {
+  var grid = document.getElementById('pet-select-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  PETS.forEach(function(pet) {
+    var div = document.createElement('div');
+    div.className = 'pet-select-card';
+    div.style.borderColor = pet.color;
+    div.innerHTML =
+      '<div class="pet-select-emoji" style="color:' + pet.color + '">' + pet.emoji + '</div>' +
+      '<div class="pet-select-name">' + pet.name + '</div>' +
+      '<div class="pet-select-desc">' + pet.desc + '</div>';
+    div.onclick = function() { selectPet(pet.id); };
+    grid.appendChild(div);
+  });
 }
 
-function closeModal(id) {
-  document.getElementById(id).classList.remove('active');
+function selectPet(petId) {
+  gameState.pet.type = petId;
+  var pet = getPetType(petId);
+  gameState.pet.name = pet.name + '宝宝';
+  saveGame();
+  document.getElementById('pet-select-screen').classList.remove('active');
+  document.getElementById('main-screen').classList.add('active');
+  showToast('你选择了' + pet.name + '！好好照顾它吧！', 3000);
+  renderAll();
 }
 
 // ==========================================
 // 渲染函数
 // ==========================================
-
 function renderAll() {
   renderPet();
   renderInventory();
@@ -213,22 +244,18 @@ function renderAll() {
   renderCheckinStatus();
 }
 
-// ---- 渲染宠物页面 ----
 function renderPet() {
   var pet = gameState.pet;
   var stage = getCurrentStage();
+  var petType = getPetType(pet.type);
 
-  // 顶部栏
   document.getElementById('pet-emoji-top').textContent = stage.emoji;
   document.getElementById('pet-name-display').textContent = pet.name;
   document.getElementById('pet-level-top').textContent = pet.level;
   document.getElementById('streak-count').textContent = gameState.checkin.streak;
-
-  // 宠物展示
   document.getElementById('pet-emoji-big').textContent = stage.emoji;
   document.getElementById('pet-stage-name').textContent = stage.name;
 
-  // 状态条
   document.getElementById('bar-hunger').style.width = pet.hunger + '%';
   document.getElementById('bar-happiness').style.width = pet.happiness + '%';
   document.getElementById('bar-health').style.width = pet.health + '%';
@@ -236,25 +263,22 @@ function renderPet() {
   document.getElementById('text-happiness').textContent = Math.floor(pet.happiness);
   document.getElementById('text-health').textContent = Math.floor(pet.health);
 
-  // 经验条 - 显示进化阶段进度（不会因升级而倒退）
   var stagePercent = getStageProgress();
-  var currentStage = getPetStage(gameState.pet.level);
-  var nextStageName = (currentStage < PET_STAGES.length - 1) ? PET_STAGES[currentStage + 1].name : '已满级';
+  var currentStageIdx = getPetStageIndex(pet.level, pet.type);
+  var nextStageName = (currentStageIdx < petType.stages.length - 1) ? petType.stages[currentStageIdx + 1].name : '已满级';
   document.getElementById('exp-bar').style.width = Math.min(100, stagePercent) + '%';
   document.getElementById('exp-text').textContent = 'Lv.' + pet.level + ' · 进化进度 ' + stagePercent + '%';
 
-  // 今日提示
   var tipText = '';
   if (pet.hunger < 20) {
     tipText = '宠物快饿坏了，快喂点东西吧！';
   } else if (pet.hunger < 40) {
     tipText = '宠物有点饿了，记得喂它哦~';
   } else if (gameState.checkin.todayCount === 0) {
-    var nextStageName = '';
-    var cs = getPetStage(pet.level);
-    if (cs < PET_STAGES.length - 1) {
-      nextStageName = PET_STAGES[cs + 1].name;
-      tipText = '今天还没打卡哦！背首古诗离' + nextStageName + '更近一步！';
+    var cs = getPetStageIndex(pet.level, pet.type);
+    var pt = getPetType(pet.type);
+    if (cs < pt.stages.length - 1) {
+      tipText = '今天还没打卡哦！背首古诗离' + pt.stages[cs + 1].name + '更近一步！';
     } else {
       tipText = '今天还没打卡哦，快去背首古诗吧！';
     }
@@ -266,11 +290,9 @@ function renderPet() {
   document.getElementById('tip-text').textContent = tipText;
 }
 
-// ---- 渲染食物网格（喂食页面） ----
 function renderFoodGrid() {
   var grid = document.getElementById('food-grid');
   grid.innerHTML = '';
-
   Object.keys(FOODS).forEach(function(key) {
     var food = FOODS[key];
     var count = gameState.inventory[key] || 0;
@@ -287,7 +309,6 @@ function renderFoodGrid() {
   });
 }
 
-// ---- 喂食 ----
 function feedPet(foodKey) {
   var food = FOODS[foodKey];
   if (!food) return;
@@ -295,48 +316,31 @@ function feedPet(foodKey) {
     showToast('没有' + food.name + '了！');
     return;
   }
-
-  // 检查宠物是否还能吃
   if (gameState.pet.hunger >= 100 && gameState.pet.happiness >= 100 && gameState.pet.health >= 100) {
     showToast('宠物现在不饿哦~');
     return;
   }
-
-  // 扣除食物
   gameState.inventory[foodKey]--;
-
-  // 喂食动画
   var petEl = document.getElementById('pet-emoji-big');
   petEl.classList.add('eating');
-
-  // 飞行动画
   showFeedAnimation(food.emoji);
-
   setTimeout(function() {
     petEl.classList.remove('eating');
     petEl.classList.add('happy');
-    setTimeout(function() {
-      petEl.classList.remove('happy');
-    }, 1500);
+    setTimeout(function() { petEl.classList.remove('happy'); }, 1500);
   }, 1000);
-
-  // 增加属性
   gameState.pet.hunger = Math.min(100, gameState.pet.hunger + food.hunger);
   gameState.pet.happiness = Math.min(100, gameState.pet.happiness + food.happiness);
   gameState.pet.health = Math.min(100, gameState.pet.health + food.health);
-
-  // 增加经验
   var oldLevel = gameState.pet.level;
   gameState.pet.exp += food.exp;
   checkLevelUp(oldLevel);
-
   showToast(food.name + ' +1，' + food.name + '真好吃！');
   saveGame();
   renderAll();
   checkAchievements();
 }
 
-// ---- 喂食飞行动画 ----
 function showFeedAnimation(emoji) {
   var petEl = document.getElementById('pet-emoji-big');
   var petRect = petEl.getBoundingClientRect();
@@ -345,12 +349,9 @@ function showFeedAnimation(emoji) {
   animEl.style.left = (petRect.left + petRect.width / 2 - 16) + 'px';
   animEl.style.top = (petRect.top + 10) + 'px';
   animEl.classList.add('active');
-  setTimeout(function() {
-    animEl.classList.remove('active');
-  }, 800);
+  setTimeout(function() { animEl.classList.remove('active'); }, 800);
 }
 
-// ---- 检查升级 ----
 function checkLevelUp(oldLevel) {
   var leveled = false;
   while (gameState.pet.exp >= getExpNeeded()) {
@@ -359,11 +360,9 @@ function checkLevelUp(oldLevel) {
     leveled = true;
   }
   if (leveled) {
-    // 检查是否进化
-    var oldStage = getPetStage(oldLevel);
-    var newStage = getPetStage(gameState.pet.level);
+    var oldStage = getPetStageIndex(oldLevel, gameState.pet.type);
+    var newStage = getPetStageIndex(gameState.pet.level, gameState.pet.type);
     if (newStage > oldStage) {
-      // 进化动画
       var petEl = document.getElementById('pet-emoji-big');
       petEl.classList.add('evolving');
       setTimeout(function() {
@@ -376,18 +375,16 @@ function checkLevelUp(oldLevel) {
   }
 }
 
-// ---- 进化弹窗 ----
 function showEvolveModal(stageIndex) {
-  var stage = PET_STAGES[stageIndex];
+  var pet = getPetType(gameState.pet.type);
+  var stage = pet.stages[stageIndex];
   document.getElementById('evolve-emoji').textContent = stage.emoji;
   document.getElementById('evolve-name').textContent = stage.name;
   document.getElementById('evolve-desc').textContent = stage.desc;
   openModal('evolve-modal');
-  // 撒花效果
   createConfetti();
 }
 
-// ---- 撒花 ----
 function createConfetti() {
   var colors = ['#FF6B6B', '#4ECDC4', '#FFE66D', '#A29BFE', '#FF6B9D', '#95E1D3'];
   for (var i = 0; i < 30; i++) {
@@ -407,57 +404,130 @@ function createConfetti() {
 // ==========================================
 // 打卡系统
 // ==========================================
-
-var currentMode = 'poem'; // 'poem' or 'story'
+var currentMode = 'poem';
 var currentReciteItem = null;
-var currentQuizIndex = 0; // 当前测验题目索引
-var quizPhase = 'reading'; // 'reading' | 'quiz'
+var currentQuizIndex = 0;
+var quizPhase = 'reading'; // 'reading' | 'voice' | 'quiz'
+var currentGateView = 1; // 当前查看的关卡
+
+// 语音识别相关
+var recognition = null;
+var isRecording = false;
+var voiceResult = '';
+var speechSupported = false;
 
 function renderCheckinStatus() {
   document.getElementById('today-count').textContent = gameState.checkin.todayCount;
 }
 
-// ---- 渲染内容列表 ----
-function renderContentList() {
+// ---- 渲染关卡列表 ----
+function renderGateList() {
   var list = document.getElementById('content-list');
   list.innerHTML = '';
 
-  var data = currentMode === 'poem' ? POEMS : STORIES;
+  var totalCompleted = gameState.checkin.completedPoems.length;
+  var maxUnlocked = getMaxUnlockedGate(totalCompleted);
 
-  data.forEach(function(item) {
-    var isDone = false;
-    if (currentMode === 'poem') {
-      isDone = gameState.checkin.completedPoems.indexOf(item.id) !== -1;
-    } else {
-      isDone = gameState.checkin.completedStories.indexOf(item.id) !== -1;
-    }
+  GATES.forEach(function(gate) {
+    var isUnlocked = gate.id <= maxUnlocked;
+    var gatePoems = getPoemsByGate(gate.id);
+    var gateCompleted = getGateCompletedCount(gate.id, gameState.checkin.completedPoems);
+    var isExpanded = (gate.id === currentGateView);
 
     var div = document.createElement('div');
-    div.className = 'content-item' + (isDone ? ' done' : '');
+    div.className = 'gate-section' + (isUnlocked ? '' : ' locked') + (isExpanded ? ' expanded' : '');
 
-    // 难度星级
+    var headerHtml =
+      '<div class="gate-header" onclick="toggleGate(' + gate.id + ')">' +
+        '<span class="gate-icon">' + (isUnlocked ? gate.icon : '🔒') + '</span>' +
+        '<div class="gate-info">' +
+          '<div class="gate-name">' + (isUnlocked ? gate.name : '???') + '</div>' +
+          '<div class="gate-desc">' + (isUnlocked ? gate.grade + ' · ' + gateCompleted + '/' + gatePoems.length + '首' : '完成' + gate.unlockReq + '首古诗解锁') + '</div>' +
+        '</div>' +
+        '<div class="gate-progress">' +
+          (isUnlocked ?
+            '<div class="gate-progress-bar"><div class="gate-progress-fill" style="width:' + (gateCompleted / gatePoems.length * 100) + '%;background:' + gate.color + '"></div></div>' +
+            '<span class="gate-progress-text">' + gateCompleted + '/' + gatePoems.length + '</span>'
+          : '<span class="gate-lock">🔒</span>') +
+        '</div>' +
+        '<span class="gate-arrow' + (isExpanded ? ' rotated' : '') + '">▼</span>' +
+      '</div>';
+
+    var poemsHtml = '';
+    if (isExpanded && isUnlocked) {
+      poemsHtml = '<div class="gate-poems">';
+      gatePoems.forEach(function(item) {
+        var isDone = gameState.checkin.completedPoems.indexOf(item.id) !== -1;
+        var dotsHtml = '';
+        for (var d = 0; d < 3; d++) {
+          dotsHtml += '<span class="difficulty-dot' + (d < Math.min(item.difficulty, 3) ? ' active' : '') + '"></span>';
+        }
+        var meta = item.author + ' · ' + item.dynasty;
+        var rewardHint = getRewardForItem(item).name;
+        poemsHtml +=
+          '<div class="content-item' + (isDone ? ' done' : '') + '" onclick="openRecite(POEMS.find(function(p){return p.id===\'' + item.id + '\'}))">' +
+            '<div class="content-item-info">' +
+              '<div class="content-item-title">' + item.title +
+                '<span class="difficulty-dots">' + dotsHtml + '</span>' +
+              '</div>' +
+              '<div class="content-item-meta">' + meta + ' · 奖励: ' + rewardHint + '</div>' +
+            '</div>' +
+            '<div class="content-item-status ' + (isDone ? 'status-done' : 'status-pending') + '">' +
+              (isDone ? '已背 ✓' : '去背') +
+            '</div>' +
+          '</div>';
+      });
+      poemsHtml += '</div>';
+    }
+
+    div.innerHTML = headerHtml + poemsHtml;
+    list.appendChild(div);
+  });
+}
+
+function toggleGate(gateId) {
+  var totalCompleted = gameState.checkin.completedPoems.length;
+  var maxUnlocked = getMaxUnlockedGate(totalCompleted);
+  if (gateId > maxUnlocked) {
+    var gate = GATES.find(function(g) { return g.id === gateId; });
+    showToast('需要完成' + gate.unlockReq + '首古诗才能解锁第' + gateId + '关！', 2500);
+    return;
+  }
+  currentGateView = (currentGateView === gateId) ? 0 : gateId;
+  renderGateList();
+}
+
+// ---- 渲染内容列表 ----
+function renderContentList() {
+  if (currentMode === 'poem') {
+    renderGateList();
+  } else {
+    renderStoryList();
+  }
+}
+
+function renderStoryList() {
+  var list = document.getElementById('content-list');
+  list.innerHTML = '';
+  STORIES.forEach(function(item) {
+    var isDone = gameState.checkin.completedStories.indexOf(item.id) !== -1;
+    var div = document.createElement('div');
+    div.className = 'content-item' + (isDone ? ' done' : '');
     var dotsHtml = '';
     for (var d = 0; d < 3; d++) {
       dotsHtml += '<span class="difficulty-dot' + (d < item.difficulty ? ' active' : '') + '"></span>';
     }
-
-    var meta = currentMode === 'poem'
-      ? item.author + ' · ' + item.dynasty
-      : '小故事';
-
     var rewardHint = getRewardForItem(item).name;
-
     div.innerHTML =
       '<div class="content-item-info">' +
         '<div class="content-item-title">' + item.title +
           '<span class="difficulty-dots">' + dotsHtml + '</span>' +
         '</div>' +
-        '<div class="content-item-meta">' + meta + ' · 奖励: ' + rewardHint + '</div>' +
+        '<div class="content-item-meta">小故事 · 奖励: ' + rewardHint + '</div>' +
       '</div>' +
       '<div class="content-item-status ' + (isDone ? 'status-done' : 'status-pending') + '">' +
-        (isDone ? '已背 ✓' : '去背') +
+        (isDone ? '已读 ✓' : '去读') +
       '</div>';
-
     div.onclick = function() { openRecite(item); };
     list.appendChild(div);
   });
@@ -467,30 +537,19 @@ function renderContentList() {
 function getRewardForItem(item) {
   var baseReward;
   switch (item.difficulty) {
-    case 1:
-      baseReward = 'basic_food';
-      break;
-    case 2:
-      baseReward = 'canned_food';
-      break;
-    case 3:
-      baseReward = 'bone';
-      break;
-    default:
-      baseReward = 'basic_food';
+    case 1: baseReward = 'basic_food'; break;
+    case 2: baseReward = 'milk'; break;
+    case 3: baseReward = 'canned_food'; break;
+    case 4: baseReward = 'sushi'; break;
+    case 5: baseReward = 'bone'; break;
+    case 6: baseReward = 'pizza'; break;
+    default: baseReward = 'basic_food';
   }
-
-  // 连续打卡奖励加成
   var streak = gameState.checkin.streak;
   var bonusReward = null;
-  if (streak >= 14) {
-    bonusReward = 'cake';
-  } else if (streak >= 7) {
-    bonusReward = 'bone';
-  } else if (streak >= 3) {
-    bonusReward = 'milk';
-  }
-
+  if (streak >= 14) bonusReward = 'feast';
+  else if (streak >= 7) bonusReward = 'honey';
+  else if (streak >= 3) bonusReward = 'cookie';
   return {
     base: baseReward,
     bonus: bonusReward,
@@ -502,20 +561,16 @@ function getRewardForItem(item) {
 function openRecite(item) {
   currentReciteItem = item;
   currentQuizIndex = 0;
-  quizPhase = 'reading'; // 'reading' | 'quiz'
+  quizPhase = 'reading';
   var card = document.getElementById('recite-card');
   var isDone = false;
-
   if (currentMode === 'poem') {
     isDone = gameState.checkin.completedPoems.indexOf(item.id) !== -1;
   } else {
     isDone = gameState.checkin.completedStories.indexOf(item.id) !== -1;
   }
-
   var reward = getRewardForItem(item);
-
   var html = '<button class="recite-back-btn" onclick="switchPage(\'page-checkin\')">← 返回列表</button>';
-
   if (currentMode === 'poem') {
     html +=
       '<h2 class="recite-title">' + item.title + '</h2>' +
@@ -529,37 +584,291 @@ function openRecite(item) {
       '<p class="recite-author">📖 小故事</p>' +
       '<div class="story-content">' + item.content + '</div>';
   }
-
-  // 奖励提示
   var rewardHtml = '🎁 完成后获得：' + FOODS[reward.base].emoji + ' ' + FOODS[reward.base].name;
   if (reward.bonus) {
     rewardHtml += ' + ' + FOODS[reward.bonus].emoji + ' ' + FOODS[reward.bonus].name;
   }
-
   html += '<div class="recite-reward-hint">' + rewardHtml + '</div>';
-
   if (isDone) {
-    html += '<button class="recite-done-btn" disabled>✅ 已经背过啦</button>';
+    html += '<button class="recite-done-btn" disabled>✅ 已经完成啦</button>';
   } else {
-    html += '<button class="recite-done-btn" onclick="startQuiz()">' +
-      (currentMode === 'poem' ? '📝 我背好了，开始测试！' : '📖 我读完了，开始测试！') +
-    '</button>';
+    html +=
+      '<div class="recite-gate-hint">' +
+        '<div class="gate-badge">第一关 🎤 语音背诵</div>' +
+        '<div class="gate-badge">第二关 📝 选择题</div>' +
+      '</div>' +
+      '<button class="recite-done-btn" onclick="startVoiceGate()">' +
+        (currentMode === 'poem' ? '🎤 我背好了，开始语音挑战！' : '🎤 我读完了，开始语音挑战！') +
+      '</button>';
   }
-
   card.innerHTML = html;
   switchPage('page-recite');
-  // 滚动到顶部
   document.getElementById('content-area').scrollTop = 0;
 }
 
-// ---- 开始测验 ----
+// ==========================================
+// 语音识别（第一关）
+// ==========================================
+function initSpeechRecognition() {
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (SR) {
+    speechSupported = true;
+  }
+}
+
+function startVoiceGate() {
+  quizPhase = 'voice';
+  renderVoiceGate();
+}
+
+function renderVoiceGate() {
+  var card = document.getElementById('recite-card');
+  var item = currentReciteItem;
+  var isPoem = currentMode === 'poem';
+  var targetText = isPoem ? item.content : (item.voiceText || item.title);
+
+  var html = '<button class="recite-back-btn" onclick="openRecite(currentReciteItem)">← 返回阅读</button>';
+
+  html +=
+    '<div class="voice-gate-container">' +
+      '<div class="voice-gate-badge">🎤 第一关：语音' + (isPoem ? '背诵' : '朗读') + '</div>' +
+      '<h2 class="recite-title">' + item.title + '</h2>';
+
+  if (isPoem) {
+    html += '<div class="recite-poem voice-target-text">' + item.content + '</div>';
+    html += '<p class="voice-hint">请大声朗读上面的古诗，系统会自动识别哦~</p>';
+  } else {
+    html += '<p class="voice-hint">请大声朗读故事标题"' + item.title + '"，以及故事中的任意一段~</p>';
+  }
+
+  // 检查浏览器支持
+  if (!speechSupported) {
+    html +=
+      '<div class="voice-unsupported">' +
+        '<p>😕 当前浏览器不支持语音识别</p>' +
+        '<p class="voice-unsupported-tip">请使用Chrome浏览器或Safari（iOS 14.5+）<br>或者直接跳过语音关，进入选择题</p>' +
+      '</div>' +
+      '<button class="btn btn-skip" onclick="startQuiz()">跳过语音，直接答题 →</button>';
+  } else {
+    html +=
+      '<div class="voice-record-area" id="voice-record-area">' +
+        '<button class="voice-mic-btn" id="voice-mic-btn" onclick="toggleRecording()">' +
+          '<span class="mic-icon">🎤</span>' +
+          '<span class="mic-text">点击开始录音</span>' +
+        '</button>' +
+        '<div class="voice-result" id="voice-result" style="display:none;">' +
+          '<div class="voice-result-label">识别结果：</div>' +
+          '<div class="voice-result-text" id="voice-result-text"></div>' +
+        '</div>' +
+        '<div class="voice-score" id="voice-score" style="display:none;">' +
+          '<div class="voice-score-label">匹配度：</div>' +
+          '<div class="voice-score-bar">' +
+            '<div class="voice-score-fill" id="voice-score-fill"></div>' +
+          '</div>' +
+          '<div class="voice-score-text" id="voice-score-text"></div>' +
+        '</div>' +
+      '</div>' +
+      '<button class="btn btn-skip" onclick="skipVoiceGate()" style="margin-top:12px;">跳过语音，直接答题 →</button>';
+  }
+
+  html += '</div>';
+  card.innerHTML = html;
+  document.getElementById('content-area').scrollTop = 0;
+}
+
+function toggleRecording() {
+  if (isRecording) {
+    stopRecording();
+  } else {
+    startRecording();
+  }
+}
+
+function startRecording() {
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return;
+
+  recognition = new SR();
+  recognition.lang = 'zh-CN';
+  recognition.continuous = true;
+  recognition.interimResults = true;
+
+  voiceResult = '';
+  isRecording = true;
+
+  var micBtn = document.getElementById('voice-mic-btn');
+  micBtn.classList.add('recording');
+  micBtn.querySelector('.mic-icon').textContent = '🔴';
+  micBtn.querySelector('.mic-text').textContent = '录音中...点击停止';
+
+  recognition.onresult = function(event) {
+    var final = '';
+    var interim = '';
+    for (var i = event.resultIndex; i < event.results.length; i++) {
+      if (event.results[i].isFinal) {
+        final += event.results[i][0].transcript;
+      } else {
+        interim += event.results[i][0].transcript;
+      }
+    }
+    voiceResult = (final + interim).trim();
+
+    var resultEl = document.getElementById('voice-result');
+    var resultText = document.getElementById('voice-result-text');
+    if (voiceResult) {
+      resultEl.style.display = 'block';
+      resultText.textContent = voiceResult;
+    }
+  };
+
+  recognition.onerror = function(event) {
+    console.warn('语音识别错误:', event.error);
+    if (event.error === 'not-allowed') {
+      showToast('请允许使用麦克风哦~', 3000);
+    }
+    stopRecording();
+  };
+
+  recognition.onend = function() {
+    if (isRecording) {
+      // 自动继续录音（如果还在录音状态）
+      try { recognition.start(); } catch(e) {}
+    }
+  };
+
+  try {
+    recognition.start();
+  } catch(e) {
+    console.warn('启动录音失败:', e);
+  }
+}
+
+function stopRecording() {
+  isRecording = false;
+  if (recognition) {
+    try { recognition.stop(); } catch(e) {}
+    recognition = null;
+  }
+
+  var micBtn = document.getElementById('voice-mic-btn');
+  if (micBtn) {
+    micBtn.classList.remove('recording');
+    micBtn.querySelector('.mic-icon').textContent = '🎤';
+    micBtn.querySelector('.mic-text').textContent = '点击重新录音';
+  }
+
+  // 分析匹配度
+  if (voiceResult) {
+    var item = currentReciteItem;
+    var isPoem = currentMode === 'poem';
+    var targetText = isPoem ? item.content : (item.voiceText || item.title);
+
+    var result = matchRecitation(targetText, voiceResult);
+    showVoiceScore(result.score, result.passed);
+  }
+}
+
+function showVoiceScore(score, passed) {
+  var scoreEl = document.getElementById('voice-score');
+  var scoreFill = document.getElementById('voice-score-fill');
+  var scoreText = document.getElementById('voice-score-text');
+
+  scoreEl.style.display = 'block';
+  scoreFill.style.width = score + '%';
+
+  if (passed) {
+    scoreFill.style.background = 'linear-gradient(90deg, #4ECDC4, #44b483)';
+    scoreText.innerHTML = '🎉 太棒了！匹配度 ' + score + '%，通过！';
+    scoreText.style.color = '#4ECDC4';
+
+    // 显示进入第二关按钮
+    var card = document.getElementById('recite-card');
+    var existing = document.getElementById('voice-pass-btn');
+    if (!existing) {
+      var passBtn = document.createElement('button');
+      passBtn.id = 'voice-pass-btn';
+      passBtn.className = 'recite-done-btn';
+      passBtn.textContent = '✅ 语音通过！进入第二关 →';
+      passBtn.onclick = function() { startQuiz(); };
+      card.appendChild(passBtn);
+    }
+  } else {
+    scoreFill.style.background = 'linear-gradient(90deg, #FF6B6B, #FF9F43)';
+    scoreText.innerHTML = '💪 匹配度 ' + score + '%，差一点点！再试一次吧~';
+    scoreText.style.color = '#FF9F43';
+  }
+}
+
+// ---- 宽松匹配算法 ----
+// 适合小学生口齿不清的情况
+function matchRecitation(targetText, speechText) {
+  // 标准化：移除所有标点和空白
+  function normalize(s) {
+    return s.replace(/[\s，。、！？；：""''《》（）()\n\r,.\!\?;:"'·]/g, '');
+  }
+
+  var target = normalize(targetText);
+  var speech = normalize(speechText);
+
+  if (speech.length === 0) return { score: 0, passed: false };
+
+  // 算法1: target中的字有多少按顺序出现在speech中
+  var targetInSpeech = subsequenceMatch(target, speech);
+
+  // 算法2: speech中的字有多少在target中（防止乱说）
+  var speechInTarget = charOverlap(speech, target);
+
+  // 综合得分：以target覆盖为主(70%)，语音准确度为辅(30%)
+  var score = Math.round(targetInSpeech * 0.7 + speechInTarget * 0.3);
+
+  // 对于故事，要求更宽松（只需30%即可通过）
+  var threshold = (currentMode === 'story') ? 30 : 55;
+
+  return { score: score, passed: score >= threshold };
+}
+
+// 子序列匹配：short中的字符有多少按顺序出现在long中
+function subsequenceMatch(short, long) {
+  if (short.length === 0) return 100;
+  var si = 0;
+  for (var i = 0; i < long.length && si < short.length; i++) {
+    if (long[i] === short[si]) {
+      si++;
+    }
+  }
+  return Math.round((si / short.length) * 100);
+}
+
+// 字符重叠率：speech中有多少字符出现在target中
+function charOverlap(speech, target) {
+  if (speech.length === 0) return 0;
+  var targetSet = {};
+  for (var i = 0; i < target.length; i++) {
+    targetSet[target[i]] = true;
+  }
+  var matchCount = 0;
+  for (var j = 0; j < speech.length; j++) {
+    if (targetSet[speech[j]]) {
+      matchCount++;
+    }
+  }
+  return Math.round((matchCount / speech.length) * 100);
+}
+
+function skipVoiceGate() {
+  showToast('跳过语音关，直接进入选择题~', 2000);
+  startQuiz();
+}
+
+// ==========================================
+// 选择题（第二关）
+// ==========================================
 function startQuiz() {
   quizPhase = 'quiz';
   currentQuizIndex = 0;
   renderQuizQuestion();
 }
 
-// ---- 渲染测验题目 ----
 function renderQuizQuestion() {
   if (!currentReciteItem || !currentReciteItem.quiz) return;
   var card = document.getElementById('recite-card');
@@ -570,16 +879,19 @@ function renderQuizQuestion() {
 
   var html = '<button class="recite-back-btn" onclick="openRecite(currentReciteItem)">← 返回阅读</button>';
 
-  // 进度指示
+  html +=
+    '<div class="quiz-gate-header">' +
+      '<div class="gate-badge passed">✅ 第一关 语音</div>' +
+      '<div class="gate-badge active">📝 第二关 选择题</div>' +
+    '</div>';
+
   html += '<div class="quiz-progress">' +
     '<span class="quiz-progress-text">第 ' + (idx + 1) + ' / ' + total + ' 题</span>' +
     '<div class="quiz-progress-bar"><div class="quiz-progress-fill" style="width:' + (idx / total * 100) + '%"></div></div>' +
   '</div>';
 
-  // 题目
   html += '<div class="quiz-question">' + question.q + '</div>';
 
-  // 选项
   html += '<div class="quiz-options">';
   for (var i = 0; i < question.options.length; i++) {
     html += '<button class="quiz-option-btn" onclick="answerQuiz(' + i + ')">' +
@@ -589,46 +901,36 @@ function renderQuizQuestion() {
   }
   html += '</div>';
 
-  // 反馈区域
   html += '<div class="quiz-feedback" id="quiz-feedback"></div>';
 
   card.innerHTML = html;
   document.getElementById('content-area').scrollTop = 0;
 }
 
-// ---- 回答测验题目 ----
 function answerQuiz(selectedIndex) {
   var quiz = currentReciteItem.quiz;
   var question = quiz[currentQuizIndex];
   var feedbackEl = document.getElementById('quiz-feedback');
 
   if (selectedIndex === question.answer) {
-    // 答对了
     feedbackEl.innerHTML = '<span class="quiz-correct">✅ 答对了！真棒！</span>';
-
-    // 禁用所有按钮
     var btns = document.querySelectorAll('.quiz-option-btn');
     btns.forEach(function(b) { b.style.pointerEvents = 'none'; });
-
-    // 标记正确选项
     btns[selectedIndex].classList.add('correct');
 
     setTimeout(function() {
       currentQuizIndex++;
       if (currentQuizIndex >= quiz.length) {
-        // 全部答完
         completeCheckin();
       } else {
         renderQuizQuestion();
       }
     }, 1200);
   } else {
-    // 答错了
     feedbackEl.innerHTML = '<span class="quiz-wrong">❌ 不对哦，再想想看~</span>';
     var btns = document.querySelectorAll('.quiz-option-btn');
     btns[selectedIndex].classList.add('wrong');
     btns[selectedIndex].style.pointerEvents = 'none';
-
     setTimeout(function() {
       feedbackEl.innerHTML = '';
       btns[selectedIndex].classList.remove('wrong');
@@ -640,36 +942,25 @@ function answerQuiz(selectedIndex) {
 // ---- 完成打卡 ----
 function completeCheckin() {
   if (!currentReciteItem) return;
-
   var item = currentReciteItem;
   var isPoem = currentMode === 'poem';
 
-  // 检查是否已完成
   var completedArr = isPoem ? gameState.checkin.completedPoems : gameState.checkin.completedStories;
   if (completedArr.indexOf(item.id) !== -1) {
-    showToast('这首已经背过了哦~');
+    showToast('这个已经完成过了哦~');
     return;
   }
-
-  // 标记完成
   completedArr.push(item.id);
 
-  // 判断是否今天第一次打卡（在递增之前）
   var isFirstCheckinToday = (gameState.checkin.todayCount === 0);
-
-  // 更新打卡信息
   var today = getTodayStr();
   var prevLastCheckinDate = gameState.checkin.lastCheckinDate;
   gameState.checkin.todayCount++;
   gameState.checkin.lastCheckinDate = today;
-
-  // 历史记录
   if (!gameState.checkin.history[today]) {
     gameState.checkin.history[today] = 0;
   }
   gameState.checkin.history[today]++;
-
-  // 连续打卡：仅在每天第一次打卡时更新
   if (isFirstCheckinToday) {
     var yesterday = getYesterdayStr();
     if (prevLastCheckinDate === yesterday) {
@@ -678,18 +969,25 @@ function completeCheckin() {
       gameState.checkin.streak = 1;
     }
   }
-
-  // 更新最高连续
   if (gameState.checkin.streak > gameState.checkin.bestStreak) {
     gameState.checkin.bestStreak = gameState.checkin.streak;
   }
 
-  // 更新统计
   gameState.stats.totalCheckins++;
   if (isPoem) {
     gameState.stats.poemsRecited++;
   } else {
     gameState.stats.storiesRead++;
+  }
+
+  // 检查关卡通关
+  if (isPoem && item.gate) {
+    var gatePoems = getPoemsByGate(item.gate);
+    var gateCompleted = getGateCompletedCount(item.gate, gameState.checkin.completedPoems);
+    if (gateCompleted === gatePoems.length && gameState.checkin.clearedGates.indexOf(item.gate) === -1) {
+      gameState.checkin.clearedGates.push(item.gate);
+      showToast('🎉 恭喜通关第' + item.gate + '关：' + GATES[item.gate - 1].name + '！', 3000);
+    }
   }
 
   // 发放奖励
@@ -699,7 +997,6 @@ function completeCheckin() {
     gameState.inventory[reward.bonus] = (gameState.inventory[reward.bonus] || 0) + 1;
   }
 
-  // 保存并显示奖励
   saveGame();
   quizPhase = 'reading';
   currentQuizIndex = 0;
@@ -709,29 +1006,16 @@ function completeCheckin() {
   checkAchievements();
 }
 
-// ---- 奖励弹窗 ----
 function showRewardModal(reward) {
   var modal = document.getElementById('reward-modal');
   document.getElementById('reward-emoji').textContent = '🎉';
   document.getElementById('reward-title').textContent = '打卡成功！';
-
   var itemsHtml = '';
-  itemsHtml +=
-    '<div class="reward-item">' +
-      FOODS[reward.base].emoji + ' ' + FOODS[reward.base].name + ' +1' +
-    '</div>';
+  itemsHtml += '<div class="reward-item">' + FOODS[reward.base].emoji + ' ' + FOODS[reward.base].name + ' +1</div>';
   if (reward.bonus) {
-    itemsHtml +=
-      '<div class="reward-item">' +
-        '🔥 连续' + gameState.checkin.streak + '天加成！' +
-        FOODS[reward.bonus].emoji + ' ' + FOODS[reward.bonus].name + ' +1' +
-      '</div>';
+    itemsHtml += '<div class="reward-item">🔥 连续' + gameState.checkin.streak + '天加成！' + FOODS[reward.bonus].emoji + ' ' + FOODS[reward.bonus].name + ' +1</div>';
   }
-  itemsHtml +=
-    '<div class="reward-item">' +
-      '🔥 连续打卡 ' + gameState.checkin.streak + ' 天！' +
-    '</div>';
-
+  itemsHtml += '<div class="reward-item">🔥 连续打卡 ' + gameState.checkin.streak + ' 天！</div>';
   document.getElementById('reward-items').innerHTML = itemsHtml;
   openModal('reward-modal');
   createConfetti();
@@ -740,11 +1024,9 @@ function showRewardModal(reward) {
 // ==========================================
 // 仓库 & 成就
 // ==========================================
-
 function renderInventory() {
   var grid = document.getElementById('inventory-grid');
   grid.innerHTML = '';
-
   Object.keys(FOODS).forEach(function(key) {
     var food = FOODS[key];
     var count = gameState.inventory[key] || 0;
@@ -762,7 +1044,6 @@ function renderInventory() {
 function renderAchievements() {
   var list = document.getElementById('achievement-list');
   list.innerHTML = '';
-
   ACHIEVEMENTS.forEach(function(ach) {
     var unlocked = gameState.stats.unlockedAchievements.indexOf(ach.id) !== -1;
     var div = document.createElement('div');
@@ -787,7 +1068,8 @@ function checkAchievements() {
       case 'bestStreak': value = gameState.checkin.bestStreak; break;
       case 'poemsRecited': value = gameState.stats.poemsRecited; break;
       case 'storiesRead': value = gameState.stats.storiesRead; break;
-      case 'petStage': value = getPetStage(gameState.pet.level); break;
+      case 'petStage': value = getPetStageIndex(gameState.pet.level, gameState.pet.type); break;
+      case 'gateCleared': value = gameState.checkin.clearedGates.indexOf(cond.value) !== -1 ? 1 : 0; break;
     }
     if (value >= cond.value) {
       gameState.stats.unlockedAchievements.push(ach.id);
@@ -801,7 +1083,6 @@ function checkAchievements() {
 // ==========================================
 // 档案页
 // ==========================================
-
 function renderArchive() {
   document.getElementById('stat-total-checkins').textContent = gameState.stats.totalCheckins;
   document.getElementById('stat-poems').textContent = gameState.stats.poemsRecited;
@@ -810,49 +1091,33 @@ function renderArchive() {
   renderCalendar();
 }
 
-// ---- 日历 ----
 var calendarDate = new Date();
 
 function renderCalendar() {
   var cal = document.getElementById('calendar');
   var year = calendarDate.getFullYear();
   var month = calendarDate.getMonth();
-
-  var monthNames = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
-
+  var monthNames = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
   var firstDay = new Date(year, month, 1).getDay();
   var daysInMonth = new Date(year, month + 1, 0).getDate();
   var today = getTodayStr();
-
   var html = '';
   html += '<div class="calendar-header">';
   html += '<button class="calendar-nav-btn" onclick="changeMonth(-1)">‹</button>';
   html += '<span class="calendar-month">' + year + '年 ' + monthNames[month] + '</span>';
   html += '<button class="calendar-nav-btn" onclick="changeMonth(1)">›</button>';
   html += '</div>';
-
   html += '<div class="calendar-grid">';
-  var weekdays = ['日', '一', '二', '三', '四', '五', '六'];
-  weekdays.forEach(function(w) {
-    html += '<div class="cal-weekday">' + w + '</div>';
-  });
-
-  for (var i = 0; i < firstDay; i++) {
-    html += '<div class="cal-day empty"></div>';
-  }
-
+  var weekdays = ['日','一','二','三','四','五','六'];
+  weekdays.forEach(function(w) { html += '<div class="cal-weekday">' + w + '</div>'; });
+  for (var i = 0; i < firstDay; i++) { html += '<div class="cal-day empty"></div>'; }
   for (var d = 1; d <= daysInMonth; d++) {
     var dateStr = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
     var classes = 'cal-day';
-    if (gameState.checkin.history[dateStr]) {
-      classes += ' checked';
-    }
-    if (dateStr === today) {
-      classes += ' today';
-    }
+    if (gameState.checkin.history[dateStr]) classes += ' checked';
+    if (dateStr === today) classes += ' today';
     html += '<div class="' + classes + '">' + d + '</div>';
   }
-
   html += '</div>';
   cal.innerHTML = html;
 }
@@ -865,30 +1130,15 @@ function changeMonth(delta) {
 // ==========================================
 // 页面切换
 // ==========================================
-
 function switchPage(pageId) {
-  var pages = document.querySelectorAll('.page');
-  pages.forEach(function(p) {
-    p.classList.remove('active');
-  });
+  document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
   document.getElementById(pageId).classList.add('active');
-
-  // 切换页面时滚动到顶部
   var contentArea = document.getElementById('content-area');
-  if (contentArea) {
-    contentArea.scrollTop = 0;
-  }
-
-  // 更新导航栏
-  var navBtns = document.querySelectorAll('.nav-btn');
-  navBtns.forEach(function(btn) {
+  if (contentArea) contentArea.scrollTop = 0;
+  document.querySelectorAll('.nav-btn').forEach(function(btn) {
     btn.classList.remove('active');
-    if (btn.getAttribute('data-page') === pageId) {
-      btn.classList.add('active');
-    }
+    if (btn.getAttribute('data-page') === pageId) btn.classList.add('active');
   });
-
-  // 页面特定渲染
   if (pageId === 'page-checkin') {
     renderContentList();
     renderCheckinStatus();
@@ -900,42 +1150,40 @@ function switchPage(pageId) {
 // ==========================================
 // 初始化
 // ==========================================
-
-// ---- 检测是否已安装(standalone模式) ----
 function isStandalone() {
-  return window.matchMedia('(display-mode: standalone)').matches ||
-         window.navigator.standalone === true;
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
 }
 
 function init() {
-  // 加载存档
+  initSpeechRecognition();
   var hasSave = loadGame();
-
-  // 检查新一天 + 时间衰减
   checkNewDay();
-
-  // 检测是否已安装(standalone模式)
   var standalone = isStandalone();
 
-  // 启动页按钮
-  document.getElementById('start-btn').onclick = function() {
-    document.getElementById('welcome-screen').classList.remove('active');
-    document.getElementById('main-screen').classList.add('active');
-    if (!hasSave) {
-      // 首次进入，给新手礼包
-      showToast('欢迎来到古诗小达人！送你3份狗粮和2瓶牛奶作为见面礼！', 3000);
-    }
-    renderAll();
-  };
+  // 检查是否需要选择宠物
+  var needPetSelection = !gameState.pet.type;
 
-  // 如果已安装(APP模式)或有存档，直接跳过欢迎页
-  if (standalone || hasSave) {
+  if (needPetSelection) {
+    // 显示宠物选择页
     document.getElementById('welcome-screen').classList.remove('active');
-    document.getElementById('main-screen').classList.add('active');
-    renderAll();
+    document.getElementById('pet-select-screen').classList.add('active');
+    renderPetSelection();
+  } else {
+    document.getElementById('start-btn').onclick = function() {
+      document.getElementById('welcome-screen').classList.remove('active');
+      document.getElementById('main-screen').classList.add('active');
+      if (!hasSave) {
+        showToast('欢迎来到古诗小达人！送你3份口粮和2瓶牛奶作为见面礼！', 3000);
+      }
+      renderAll();
+    };
+    if (standalone || hasSave) {
+      document.getElementById('welcome-screen').classList.remove('active');
+      document.getElementById('main-screen').classList.add('active');
+      renderAll();
+    }
   }
 
-  // 隐藏安装按钮(已安装时)
   if (standalone) {
     var installBtns = document.querySelectorAll('#install-btn, #install-btn-main');
     installBtns.forEach(function(btn) { btn.style.display = 'none'; });
@@ -943,35 +1191,24 @@ function init() {
     if (guide) guide.style.display = 'none';
   }
 
-  // 底部导航
   document.querySelectorAll('.nav-btn').forEach(function(btn) {
-    btn.onclick = function() {
-      switchPage(btn.getAttribute('data-page'));
-    };
+    btn.onclick = function() { switchPage(btn.getAttribute('data-page')); };
   });
 
-  // 模式切换
   document.querySelectorAll('.mode-tab').forEach(function(tab) {
     tab.onclick = function() {
-      document.querySelectorAll('.mode-tab').forEach(function(t) {
-        t.classList.remove('active');
-      });
+      document.querySelectorAll('.mode-tab').forEach(function(t) { t.classList.remove('active'); });
       tab.classList.add('active');
       currentMode = tab.getAttribute('data-mode');
+      currentGateView = 1;
       renderContentList();
     };
   });
 
-  // 点击弹窗背景关闭
   document.querySelectorAll('.modal').forEach(function(modal) {
-    modal.onclick = function(e) {
-      if (e.target === modal) {
-        modal.classList.remove('active');
-      }
-    };
+    modal.onclick = function(e) { if (e.target === modal) modal.classList.remove('active'); };
   });
 
-  // 定时检查属性衰减（每5分钟检查一次）
   setInterval(function() {
     checkTimeDecay();
     renderPet();
@@ -980,23 +1217,16 @@ function init() {
   renderAll();
 }
 
-// ---- 安装 PWA 提示 ----
-let deferredInstallPrompt = null;
-
+// ---- PWA 安装 ----
+var deferredInstallPrompt = null;
 window.addEventListener('beforeinstallprompt', function(e) {
-  // 已安装则不显示
-  if (isStandalone()) {
-    e.preventDefault();
-    return;
-  }
+  if (isStandalone()) { e.preventDefault(); return; }
   e.preventDefault();
   deferredInstallPrompt = e;
-  // 欢迎页的安装按钮
   var installBtn = document.getElementById('install-btn');
   if (installBtn && document.getElementById('welcome-screen').classList.contains('active')) {
     installBtn.style.display = 'inline-flex';
   }
-  // 档案页的安装按钮
   var installBtnMain = document.getElementById('install-btn-main');
   if (installBtnMain) {
     installBtnMain.style.display = 'inline-flex';
@@ -1005,12 +1235,9 @@ window.addEventListener('beforeinstallprompt', function(e) {
   }
 });
 
-// 监听安装完成事件
 window.addEventListener('appinstalled', function() {
   var installBtn = document.getElementById('install-btn');
-  if (installBtn) {
-    installBtn.style.display = 'none';
-  }
+  if (installBtn) installBtn.style.display = 'none';
   deferredInstallPrompt = null;
 });
 
@@ -1021,12 +1248,9 @@ function installApp() {
   }
   deferredInstallPrompt.prompt();
   deferredInstallPrompt.userChoice.then(function(result) {
-    if (result.outcome === 'accepted') {
-      showToast('安装成功！到桌面找找看 🐶');
-    }
+    if (result.outcome === 'accepted') showToast('安装成功！到桌面找找看 🐶');
     deferredInstallPrompt = null;
-    var installBtns = document.querySelectorAll('#install-btn, #install-btn-main');
-    installBtns.forEach(function(btn) { btn.style.display = 'none'; });
+    document.querySelectorAll('#install-btn, #install-btn-main').forEach(function(btn) { btn.style.display = 'none'; });
   });
 }
 
