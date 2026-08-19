@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#FF6B6B">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="古诗小达人">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="description" content="每天背古诗、读故事，喂养宠物，养成传奇犬！">
+  <title>古诗小达人 · 宠物养成记</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" sizes="512x512" href="icons/icon-512.png">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- ====== 启动页 ====== -->
+  <div id="welcome-screen" class="screen welcome-screen active">
+    <div class="welcome-content">
+      <div class="welcome-logo bounce">🐶</div>
+      <h1 class="welcome-title">古诗小达人</h1>
+      <p class="welcome-subtitle">宠物养成记</p>
+      <p class="welcome-desc">每天打卡背古诗、读故事<br>获得饲料喂养你的小宠物<br>看它一步步成长！</p>
+      <button id="start-btn" class="btn btn-primary btn-large">开始冒险</button>
+      <button id="install-btn" class="btn btn-install" onclick="installApp()" style="display:none">📱 安装到手机</button>
+    </div>
+  </div>
+
+  <!-- ====== 主页面 ====== -->
+  <div id="main-screen" class="screen main-screen">
+
+    <!-- 顶部状态栏 -->
+    <header class="top-bar">
+      <div class="pet-info-top">
+        <span class="pet-emoji-top" id="pet-emoji-top">🥚</span>
+        <div class="pet-name-level">
+          <span id="pet-name-display">小可爱</span>
+          <span class="level-badge">Lv.<span id="pet-level-top">0</span></span>
+        </div>
+      </div>
+      <div class="streak-info">
+        <span class="streak-icon">🔥</span>
+        <span id="streak-count">0</span>
+      </div>
+    </header>
+
+    <!-- 状态条 -->
+    <div class="stats-bar">
+      <div class="stat-item">
+        <span class="stat-icon">🍖</span>
+        <div class="stat-bar-wrap">
+          <div class="stat-bar stat-hunger" id="bar-hunger" style="width: 100%"></div>
+          <span class="stat-text" id="text-hunger">100</span>
+        </div>
+      </div>
+      <div class="stat-item">
+        <span class="stat-icon">😊</span>
+        <div class="stat-bar-wrap">
+          <div class="stat-bar stat-happiness" id="bar-happiness" style="width: 100%"></div>
+          <span class="stat-text" id="text-happiness">100</span>
+        </div>
+      </div>
+      <div class="stat-item">
+        <span class="stat-icon">❤️</span>
+        <div class="stat-bar-wrap">
+          <div class="stat-bar stat-health" id="bar-health" style="width: 100%"></div>
+          <span class="stat-text" id="text-health">100</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 内容区域 -->
+    <main class="content-area" id="content-area">
+
+      <!-- 宠物页面 -->
+      <div class="page active" id="page-pet">
+        <div class="pet-stage-area">
+          <div class="pet-display" id="pet-display">
+            <div class="pet-emoji-big" id="pet-emoji-big">🥚</div>
+            <div class="pet-stage-name" id="pet-stage-name">神秘蛋</div>
+          </div>
+          <!-- 经验条 -->
+          <div class="exp-section">
+            <div class="exp-bar-wrap">
+              <div class="exp-bar" id="exp-bar" style="width: 0%"></div>
+              <span class="exp-text" id="exp-text">0 / 50</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 喂食区域 -->
+        <div class="feed-section">
+          <h3 class="section-title">🍴 喂食</h3>
+          <div class="food-grid" id="food-grid">
+            <!-- 食物按钮动态生成 -->
+          </div>
+        </div>
+
+        <!-- 今日提示 -->
+        <div class="daily-tip" id="daily-tip">
+          <span class="tip-icon">💡</span>
+          <span id="tip-text">完成今天的打卡，获得饲料奖励吧！</span>
+        </div>
+      </div>
+
+      <!-- 打卡页面 -->
+      <div class="page" id="page-checkin">
+        <div class="checkin-mode-tabs">
+          <button class="mode-tab active" data-mode="poem">📜 背古诗</button>
+          <button class="mode-tab" data-mode="story">📖 读故事</button>
+        </div>
+
+        <!-- 今日打卡状态 -->
+        <div class="today-checkin-status" id="today-checkin-status">
+          <span>今日已打卡 <strong id="today-count">0</strong> 次</span>
+          <span class="divider">|</span>
+          <span>可获得奖励</span>
+        </div>
+
+        <!-- 内容列表 -->
+        <div class="content-list" id="content-list">
+          <!-- 动态生成 -->
+        </div>
+      </div>
+
+      <!-- 背诵详情页 -->
+      <div class="page" id="page-recite">
+        <div class="recite-card" id="recite-card">
+          <!-- 动态生成 -->
+        </div>
+      </div>
+
+      <!-- 仓库页面 -->
+      <div class="page" id="page-inventory">
+        <h3 class="section-title">🎒 我的食物</h3>
+        <div class="inventory-grid" id="inventory-grid">
+          <!-- 动态生成 -->
+        </div>
+
+        <h3 class="section-title" style="margin-top: 20px">🏆 成就</h3>
+        <div class="achievement-list" id="achievement-list">
+          <!-- 动态生成 -->
+        </div>
+      </div>
+
+      <!-- 档案页面 -->
+      <div class="page" id="page-archive">
+        <div class="stat-cards">
+          <div class="stat-card">
+            <div class="stat-card-icon">📚</div>
+            <div class="stat-card-value" id="stat-total-checkins">0</div>
+            <div class="stat-card-label">总打卡次数</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-icon">📜</div>
+            <div class="stat-card-value" id="stat-poems">0</div>
+            <div class="stat-card-label">背诵古诗</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-icon">📖</div>
+            <div class="stat-card-value" id="stat-stories">0</div>
+            <div class="stat-card-label">阅读故事</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-icon">🔥</div>
+            <div class="stat-card-value" id="stat-best-streak">0</div>
+            <div class="stat-card-label">最高连续</div>
+          </div>
+        </div>
+
+        <h3 class="section-title">📅 打卡日历</h3>
+        <div class="calendar" id="calendar">
+          <!-- 动态生成 -->
+        </div>
+
+        <div class="install-guide-card" id="install-guide">
+          <h3 class="section-title">📱 安装到手机桌面</h3>
+          <p class="install-desc">像APP一样安装到手机桌面，全屏运行、离线可用！</p>
+          <button id="install-btn-main" class="btn btn-primary btn-large" onclick="installApp()" style="display:none">📱 一键安装到桌面</button>
+          <div class="install-steps" id="install-manual-steps">
+            <p class="install-step-title">手动安装方法：</p>
+            <div class="install-step">
+              <span class="install-step-num">1</span>
+              <span><b>iPhone</b>：点击Safari底部分享按钮 → 滑动选"添加到主屏幕"</span>
+            </div>
+            <div class="install-step">
+              <span class="install-step-num">2</span>
+              <span><b>Android</b>：点Chrome右上角菜单 → 选"添加到主屏幕"</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+
+    <!-- 底部导航 -->
+    <nav class="bottom-nav">
+      <button class="nav-btn active" data-page="page-pet">
+        <span class="nav-icon">🏠</span>
+        <span class="nav-label">宠物</span>
+      </button>
+      <button class="nav-btn" data-page="page-checkin">
+        <span class="nav-icon">✏️</span>
+        <span class="nav-label">打卡</span>
+      </button>
+      <button class="nav-btn" data-page="page-inventory">
+        <span class="nav-icon">🎒</span>
+        <span class="nav-label">仓库</span>
+      </button>
+      <button class="nav-btn" data-page="page-archive">
+        <span class="nav-icon">📊</span>
+        <span class="nav-label">档案</span>
+      </button>
+    </nav>
+
+  </div>
+
+  <!-- ====== 弹窗 ====== -->
+  <!-- 奖励弹窗 -->
+  <div id="reward-modal" class="modal">
+    <div class="modal-content reward-modal-content">
+      <div class="reward-emoji" id="reward-emoji">🎉</div>
+      <h2 class="reward-title" id="reward-title">打卡成功！</h2>
+      <div class="reward-items" id="reward-items">
+        <!-- 动态生成 -->
+      </div>
+      <button class="btn btn-primary" onclick="closeModal('reward-modal')">太棒了！</button>
+    </div>
+  </div>
+
+  <!-- 进化弹窗 -->
+  <div id="evolve-modal" class="modal">
+    <div class="modal-content evolve-modal-content">
+      <div class="evolve-glow"></div>
+      <h2 class="evolve-title">✨ 进化成功 ✨</h2>
+      <div class="evolve-pet" id="evolve-emoji">🐶</div>
+      <p class="evolve-name" id="evolve-name">幼犬</p>
+      <p class="evolve-desc" id="evolve-desc">毛茸茸的小狗狗</p>
+      <button class="btn btn-primary" onclick="closeModal('evolve-modal')">好耶！</button>
+    </div>
+  </div>
+
+  <!-- Toast 提示 -->
+  <div id="toast" class="toast"></div>
+
+  <!-- 喂食飞行动画 -->
+  <div id="feed-animation" class="feed-animation"></div>
+
+  <script src="js/data.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    // 注册 Service Worker（支持离线运行）
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.register('sw.js').then(function(reg) {
+          console.log('SW registered:', reg.scope);
+        }).catch(function(err) {
+          console.warn('SW failed:', err);
+        });
+      });
+    }
+  </script>
+</body>
+</html>
