@@ -410,11 +410,12 @@ var currentQuizIndex = 0;
 var quizPhase = 'reading'; // 'reading' | 'voice' | 'quiz'
 var currentGateView = 1; // 当前查看的关卡
 
-// 语音识别相关
+// 语音识别相关 — 简化版，只用 isRecording 一个标志
 var recognition = null;
-var recognitionBusy = false; // 防止重复启动
-var voiceState = 'idle'; // 'idle' | 'recording' | 'processing'
+var isRecording = false;
+var isStopping = false;     // 正在停止中（recognition.stop 已调用但 onend 还没回来）
 var voiceResult = '';
+var resultHandled = false;   // 防止 onend 和 stopRecording 重复处理结果
 var speechSupported = false;
 var recordTimer = null;
 var recordSeconds = 0;
@@ -702,30 +703,40 @@ function peekPoem() {
 }
 
 function toggleRecording() {
-  if (voiceState === 'recording') {
-    // 正在录音 → 停止
+  // 正在停止中 → 忽略点击
+  if (isStopping) {
+    var s = document.getElementById('voice-status');
+    if (s) s.innerHTML = '⏳ 正在停止... 请稍等';
+    return;
+  }
+  if (isRecording) {
     stopRecording();
-  } else if (voiceState === 'idle') {
-    // 空闲 → 开始录音
-    if (recognitionBusy) {
-      // 上一次还没完全结束，等一下
-      var statusEl = document.getElementById('voice-status');
-      if (statusEl) statusEl.innerHTML = '⏳ 请稍等，正在准备麦克风...';
-      setTimeout(function() {
-        if (voiceState === 'idle') startRecording();
-      }, 400);
-    } else {
-      startRecording();
-    }
+  } else {
+    startRecording();
   }
 }
 
-// 复用单一 recognition 实例，避免反复创建导致冲突
-function ensureRecognition() {
-  if (recognition) return recognition;
+function startRecording() {
   var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) return null;
+  if (!SR) return;
 
+  // 先清理旧实例
+  if (recognition) {
+    try { recognition.abort(); } catch(e) {}
+    recognition = null;
+  }
+
+  // 清除上次结果
+  voiceResult = '';
+  resultHandled = false;
+  var resultEl = document.getElementById('voice-result');
+  var scoreEl = document.getElementById('voice-score');
+  var passBtn = document.getElementById('voice-pass-btn');
+  if (resultEl) resultEl.style.display = 'none';
+  if (scoreEl) scoreEl.style.display = 'none';
+  if (passBtn) passBtn.remove();
+
+  // 每次创建全新实例（最可靠，避免复用导致的 InvalidStateError）
   recognition = new SR();
   recognition.lang = 'zh-CN';
   recognition.continuous = true;
@@ -733,12 +744,10 @@ function ensureRecognition() {
   recognition.maxAlternatives = 1;
 
   recognition.onstart = function() {
-    recognitionBusy = true;
     var statusEl = document.getElementById('voice-status');
     if (statusEl) statusEl.innerHTML = '🎤 正在听... 请大声朗读！';
   };
 
-  // 检测到声音开始
   recognition.onspeechstart = function() {
     var statusEl = document.getElementById('voice-status');
     if (statusEl) statusEl.innerHTML = '🎤 听到你的声音了！继续说~';
@@ -763,15 +772,15 @@ function ensureRecognition() {
     }
     voiceResult = (final + interim).trim();
 
-    var resultEl = document.getElementById('voice-result');
-    var resultText = document.getElementById('voice-result-text');
-    if (voiceResult && resultEl) {
-      resultEl.style.display = 'block';
-      resultText.textContent = voiceResult;
+    var rEl = document.getElementById('voice-result');
+    var rText = document.getElementById('voice-result-text');
+    if (voiceResult && rEl) {
+      rEl.style.display = 'block';
+      rText.textContent = voiceResult;
     }
-    var statusEl = document.getElementById('voice-status');
-    if (statusEl && voiceResult) {
-      statusEl.innerHTML = '✅ 正在识别... 说完后点「停止录音」';
+    var stEl = document.getElementById('voice-status');
+    if (stEl && voiceResult) {
+      stEl.innerHTML = '✅ 正在识别... 说完后点「停止录音」';
     }
   };
 
@@ -781,7 +790,7 @@ function ensureRecognition() {
     switch (event.error) {
       case 'not-allowed':
       case 'service-not-allowed':
-        msg = '⚠️ 需要麦克风权限！请允许后重试';
+        msg = '⚠️ 需要麦克风权限！请在浏览器地址栏点击锁图标，允许麦克风后刷新页面';
         break;
       case 'no-speech':
         msg = '🤔 没听到声音，请靠近麦克风再试';
@@ -800,51 +809,38 @@ function ensureRecognition() {
     }
     if (msg) {
       showToast(msg, 3000);
-      var statusEl = document.getElementById('voice-status');
-      if (statusEl) statusEl.innerHTML = msg;
+      var se = document.getElementById('voice-status');
+      if (se) se.innerHTML = msg;
     }
   };
 
+  // ★ onend 是唯一的结果处理和状态重置入口
   recognition.onend = function() {
-    recognitionBusy = false;
+    // 始终重置状态
+    isRecording = false;
+    isStopping = false;
+    stopRecordTimer();
+    updateMicButton('idle');
+
     var wave = document.getElementById('voice-wave');
     if (wave) wave.style.display = 'none';
 
-    if (voiceState === 'recording') {
-      // 录音自动结束（停顿太久等），自动处理结果
-      voiceState = 'idle';
-      stopRecordTimer();
-      updateMicButton('idle');
-
+    // 只处理一次结果
+    if (!resultHandled) {
+      resultHandled = true;
       if (voiceResult) {
         var targetText = currentReciteItem.content;
         var result = matchRecitation(targetText, voiceResult);
         showVoiceScore(result.score, result.passed);
       } else {
-        var statusEl = document.getElementById('voice-status');
-        if (statusEl) statusEl.innerHTML = '🤔 没识别到声音，请点击麦克风重试';
+        var se2 = document.getElementById('voice-status');
+        if (se2) se2.innerHTML = '🤔 没识别到声音，请点击麦克风重试';
       }
     }
-    // 如果 voiceState === 'processing'，说明是用户主动停止的，结果已在 stopRecording 中处理
   };
 
-  return recognition;
-}
-
-function startRecording() {
-  var rec = ensureRecognition();
-  if (!rec) return;
-
-  // 清除上次结果
-  voiceResult = '';
-  var resultEl = document.getElementById('voice-result');
-  var scoreEl = document.getElementById('voice-score');
-  var passBtn = document.getElementById('voice-pass-btn');
-  if (resultEl) resultEl.style.display = 'none';
-  if (scoreEl) scoreEl.style.display = 'none';
-  if (passBtn) passBtn.remove();
-
-  voiceState = 'recording';
+  // 设置 UI 为录音中
+  isRecording = true;
   updateMicButton('recording');
 
   var statusEl = document.getElementById('voice-status');
@@ -853,48 +849,69 @@ function startRecording() {
   startRecordTimer();
 
   try {
-    rec.start();
+    recognition.start();
   } catch(e) {
     console.warn('启动录音失败，尝试重置:', e);
-    // 可能上次还没完全停止，先 abort 再重试
-    try { rec.abort(); } catch(e2) {}
-
+    try { recognition.abort(); } catch(e2) {}
+    // 500ms 后重试
     setTimeout(function() {
+      if (!isRecording) return; // 用户已经放弃
       try {
-        rec.start();
+        recognition.start();
       } catch(e3) {
         console.warn('重试失败:', e3);
-        showToast('录音启动失败，请稍等再试~', 3000);
-        voiceState = 'idle';
+        showToast('录音启动失败，请再点一次试试~', 3000);
+        isRecording = false;
         stopRecordTimer();
         updateMicButton('idle');
-        if (statusEl) statusEl.innerHTML = '❌ 录音启动失败，请再点一次试试';
+        var se3 = document.getElementById('voice-status');
+        if (se3) se3.innerHTML = '❌ 录音启动失败，请再点一次试试';
       }
     }, 500);
   }
 }
 
 function stopRecording() {
-  voiceState = 'processing';
-  stopRecordTimer();
+  // 标记正在停止，防止重复点击
+  isStopping = true;
+  isRecording = false;
   updateMicButton('idle');
 
-  var wave = document.getElementById('voice-wave');
-  if (wave) wave.style.display = 'none';
+  var statusEl = document.getElementById('voice-status');
+  if (statusEl) statusEl.innerHTML = '⏳ 正在处理识别结果...';
 
   if (recognition) {
-    try { recognition.stop(); } catch(e) {}
-  }
-
-  // 分析匹配度
-  if (voiceResult) {
-    var targetText = currentReciteItem.content;
-    var result = matchRecitation(targetText, voiceResult);
-    showVoiceScore(result.score, result.passed);
+    try { recognition.stop(); } catch(e) {
+      // stop 失败，直接走 onend 逻辑
+      isStopping = false;
+      if (!resultHandled) {
+        resultHandled = true;
+        if (voiceResult) {
+          var targetText = currentReciteItem.content;
+          var result = matchRecitation(targetText, voiceResult);
+          showVoiceScore(result.score, result.passed);
+        } else {
+          var se = document.getElementById('voice-status');
+          if (se) se.innerHTML = '🤔 没识别到声音，请点击麦克风重试';
+        }
+      }
+    }
   } else {
-    var statusEl = document.getElementById('voice-status');
-    if (statusEl) statusEl.innerHTML = '🤔 没识别到声音，请点击麦克风重试';
+    // 没有 recognition 实例，直接处理
+    isStopping = false;
+    if (!resultHandled) {
+      resultHandled = true;
+      if (voiceResult) {
+        var targetText2 = currentReciteItem.content;
+        var result2 = matchRecitation(targetText2, voiceResult);
+        showVoiceScore(result2.score, result2.passed);
+      } else {
+        var se2 = document.getElementById('voice-status');
+        if (se2) se2.innerHTML = '🤔 没识别到声音，请点击麦克风重试';
+      }
+    }
   }
+  // onend 会在 recognition.stop() 后触发，统一在那里重置 isStopping 和处理结果
 }
 
 function updateMicButton(state) {
