@@ -1454,3 +1454,407 @@ body {
   25% { transform: translateX(-6px); }
   75% { transform: translateX(6px); }
 }
+
+/* ==========================================
+ * v2 新增样式 - 宠物选择 / 关卡 / 语音识别
+ * ========================================== */
+
+/* ---- 宠物选择页 ---- */
+.pet-select-screen {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 20px;
+}
+.pet-select-screen.active { display: flex; }
+
+.pet-select-content {
+  max-width: 500px;
+  width: 100%;
+  text-align: center;
+}
+
+.pet-select-title {
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: #fff;
+  margin-bottom: 8px;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+.pet-select-subtitle {
+  color: rgba(255,255,255,0.9);
+  font-size: 1rem;
+  margin-bottom: 24px;
+}
+
+.pet-select-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.pet-select-card {
+  background: rgba(255,255,255,0.95);
+  border-radius: 20px;
+  padding: 20px 14px;
+  border: 3px solid transparent;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  text-align: center;
+}
+.pet-select-card:active {
+  transform: scale(0.95);
+}
+.pet-select-card:hover {
+  box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+}
+
+.pet-select-emoji {
+  font-size: 3.5rem;
+  margin-bottom: 8px;
+  line-height: 1;
+}
+
+.pet-select-name {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #2d3436;
+  margin-bottom: 4px;
+}
+
+.pet-select-desc {
+  font-size: 0.8rem;
+  color: #636e72;
+  line-height: 1.4;
+}
+
+/* ---- 关卡系统 ---- */
+.gate-section {
+  background: rgba(255,255,255,0.08);
+  border-radius: 14px;
+  margin-bottom: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+.gate-section.locked {
+  opacity: 0.55;
+}
+
+.gate-header {
+  display: flex;
+  align-items: center;
+  padding: 12px 14px;
+  cursor: pointer;
+  gap: 10px;
+}
+
+.gate-icon {
+  font-size: 1.6rem;
+  flex-shrink: 0;
+}
+
+.gate-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.gate-name {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.gate-desc {
+  font-size: 0.75rem;
+  color: rgba(255,255,255,0.6);
+  margin-top: 2px;
+}
+
+.gate-progress {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  min-width: 60px;
+}
+
+.gate-progress-bar {
+  width: 50px;
+  height: 5px;
+  background: rgba(255,255,255,0.15);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.gate-progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s;
+}
+
+.gate-progress-text {
+  font-size: 0.7rem;
+  color: rgba(255,255,255,0.6);
+}
+
+.gate-lock {
+  font-size: 1.2rem;
+}
+
+.gate-arrow {
+  font-size: 0.7rem;
+  color: rgba(255,255,255,0.5);
+  transition: transform 0.3s;
+  flex-shrink: 0;
+}
+.gate-arrow.rotated {
+  transform: rotate(180deg);
+}
+
+.gate-poems {
+  padding: 0 10px 10px;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ---- 两关验证徽章 ---- */
+.recite-gate-hint {
+  display: flex;
+  gap: 8px;
+  margin: 14px 0;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.quiz-gate-header {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0 16px;
+  justify-content: center;
+}
+
+.gate-badge {
+  display: inline-block;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.2);
+  color: rgba(255,255,255,0.7);
+}
+
+.gate-badge.passed {
+  background: rgba(78,205,196,0.15);
+  border-color: #4ECDC4;
+  color: #4ECDC4;
+}
+
+.gate-badge.active {
+  background: rgba(255,159,67,0.2);
+  border-color: #FF9F43;
+  color: #FF9F43;
+  box-shadow: 0 0 12px rgba(255,159,67,0.3);
+}
+
+/* ---- 语音识别 UI ---- */
+.voice-gate-container {
+  text-align: center;
+  padding: 10px 0;
+}
+
+.voice-gate-badge {
+  display: inline-block;
+  padding: 6px 18px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  background: rgba(255,159,67,0.15);
+  border: 1px solid #FF9F43;
+  color: #FF9F43;
+  margin-bottom: 16px;
+}
+
+.voice-target-text {
+  background: rgba(255,255,255,0.05);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.voice-hint {
+  font-size: 0.85rem;
+  color: rgba(255,255,255,0.6);
+  margin-bottom: 20px;
+  line-height: 1.5;
+}
+
+.voice-record-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.voice-mic-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255,255,255,0.08);
+  border: 2px solid rgba(255,255,255,0.2);
+  border-radius: 50%;
+  width: 100px;
+  height: 100px;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.voice-mic-btn:active {
+  transform: scale(0.95);
+}
+
+.voice-mic-btn.recording {
+  border-color: #FF6B6B;
+  background: rgba(255,107,107,0.1);
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255,107,107,0.3); }
+  50% { box-shadow: 0 0 0 15px rgba(255,107,107,0); }
+}
+
+.mic-icon {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.mic-text {
+  font-size: 0.65rem;
+  color: rgba(255,255,255,0.6);
+}
+
+.voice-result {
+  width: 100%;
+  background: rgba(255,255,255,0.05);
+  border-radius: 12px;
+  padding: 12px 14px;
+  text-align: left;
+}
+
+.voice-result-label {
+  font-size: 0.75rem;
+  color: rgba(255,255,255,0.5);
+  margin-bottom: 4px;
+}
+
+.voice-result-text {
+  font-size: 0.95rem;
+  color: #fff;
+  line-height: 1.6;
+  word-break: break-all;
+}
+
+.voice-score {
+  width: 100%;
+  text-align: left;
+}
+
+.voice-score-label {
+  font-size: 0.75rem;
+  color: rgba(255,255,255,0.5);
+  margin-bottom: 6px;
+}
+
+.voice-score-bar {
+  width: 100%;
+  height: 12px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.voice-score-fill {
+  height: 100%;
+  border-radius: 6px;
+  transition: width 0.5s ease;
+}
+
+.voice-score-text {
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.voice-unsupported {
+  background: rgba(255,255,255,0.05);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 12px;
+}
+.voice-unsupported p {
+  color: rgba(255,255,255,0.7);
+  margin-bottom: 6px;
+}
+.voice-unsupported-tip {
+  font-size: 0.8rem !important;
+  color: rgba(255,255,255,0.5) !important;
+  line-height: 1.5;
+}
+
+.btn-skip {
+  display: block;
+  width: 100%;
+  padding: 12px;
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 12px;
+  color: rgba(255,255,255,0.6);
+  font-size: 0.85rem;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn-skip:active {
+  background: rgba(255,255,255,0.05);
+}
+
+/* ---- 食物网格适配更多食物 ---- */
+.food-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(75px, 1fr));
+  gap: 8px;
+}
+
+/* ---- 适配暗色主题的食物按钮 ---- */
+.food-btn {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+/* ---- 内容列表在关卡模式下的样式 ---- */
+.gate-poems .content-item {
+  margin-bottom: 6px;
+}
+
+/* ---- 暗色主题下的关卡区域 ---- */
+.gate-section.expanded {
+  background: rgba(255,255,255,0.04);
+}
+
+/* ---- 语音通过按钮 ---- */
+#voice-pass-btn {
+  margin-top: 12px;
+  animation: bounce 0.5s ease;
+}
