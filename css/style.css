@@ -1708,7 +1708,51 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
+}
+
+/* 麦克风按钮容器 */
+.voice-mic-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+}
+
+/* 录音计时器 */
+.voice-timer {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #FF6B6B;
+  font-family: monospace;
+  letter-spacing: 2px;
+}
+
+/* 声波动画 */
+.voice-wave {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+}
+.voice-wave span {
+  display: block;
+  width: 4px;
+  height: 8px;
+  background: #FF6B6B;
+  border-radius: 2px;
+  animation: waveBar 0.8s ease-in-out infinite;
+}
+.voice-wave span:nth-child(1) { animation-delay: 0s; }
+.voice-wave span:nth-child(2) { animation-delay: 0.1s; }
+.voice-wave span:nth-child(3) { animation-delay: 0.2s; }
+.voice-wave span:nth-child(4) { animation-delay: 0.3s; }
+.voice-wave span:nth-child(5) { animation-delay: 0.4s; }
+
+@keyframes waveBar {
+  0%, 100% { height: 8px; }
+  50% { height: 22px; }
 }
 
 .voice-mic-btn {
@@ -1717,14 +1761,15 @@ body {
   align-items: center;
   gap: 6px;
   background: #f7f9fc;
-  border: 2px solid #dfe6e9;
+  border: 3px solid #dfe6e9;
   border-radius: 50%;
-  width: 100px;
-  height: 100px;
+  width: 110px;
+  height: 110px;
   justify-content: center;
   cursor: pointer;
   transition: all 0.3s;
   -webkit-tap-highlight-color: transparent;
+  position: relative;
 }
 
 .voice-mic-btn:active {
@@ -1733,23 +1778,24 @@ body {
 
 .voice-mic-btn.recording {
   border-color: #FF6B6B;
-  background: rgba(255,107,107,0.08);
-  animation: pulse 1.5s infinite;
+  background: rgba(255,107,107,0.12);
+  animation: micPulse 1.2s infinite;
 }
 
-@keyframes pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(255,107,107,0.3); }
-  50% { box-shadow: 0 0 0 15px rgba(255,107,107,0); }
+@keyframes micPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255,107,107,0.4); }
+  50% { box-shadow: 0 0 0 20px rgba(255,107,107,0); }
 }
 
 .mic-icon {
-  font-size: 2rem;
+  font-size: 2.2rem;
   line-height: 1;
 }
 
 .mic-text {
-  font-size: 0.65rem;
+  font-size: 0.72rem;
   color: #636e72;
+  font-weight: 600;
 }
 
 .voice-result {
@@ -1884,8 +1930,10 @@ body {
 
 /* ---- 录音状态指示 ---- */
 .voice-status {
-  font-size: 0.85rem;
+  font-size: 1rem;
   color: #FF6B6B;
-  font-weight: 600;
-  min-height: 20px;
+  font-weight: 700;
+  min-height: 24px;
+  text-align: center;
+  padding: 4px 12px;
 }
