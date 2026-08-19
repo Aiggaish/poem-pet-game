@@ -2,7 +2,7 @@
 // Service Worker - 离线缓存 (v2: 网络优先策略)
 // ==========================================
 
-const CACHE_NAME = 'poem-pet-v6';
+const CACHE_NAME = 'poem-pet-v7';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
